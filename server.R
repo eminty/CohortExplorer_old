@@ -2,41 +2,103 @@ shinyServer(function(input, output, session) {
   
   subject <- reactiveValues(index = 1)
   
-  queryResult <- reactive({
-    if (is.null(input$domains)) {
-      return(data.frame())
-    } else {
-      events <- DatabaseConnector::renderTranslateQuerySql(
-        connection = connection,
-        sql = eventSql,
-        cdm_database_schema = cdmDatabaseSchema,
-        subject_id = subjectIds[subject$index],
-        drug_era = "Drug era" %in% input$domains,
-        drug_exposure = "Drug exposure" %in% input$domains,
-        condition_era = "Condition era" %in% input$domains,
-        condition_occurrence = "Condition occurrence" %in% input$domains,
-        procedure = "Procedure" %in% input$domains,
-        measurement = "Measurement" %in% input$domains,
-        observation = "Observation" %in% input$domains,
-        visit = "Visit" %in% input$domains,
-        observation_period = "Observation period" %in% input$domains,
-        vocabulary_database_schema = vocabularyDatabaseSchema, 
-        snakeCaseToCamelCase = TRUE
+  cohortAndObservationPeriod <- reactive({
+    cohortFiltered <- cohort %>%
+      dplyr::filter(subjectId == subjectIds[subject$index]) %>%
+      dplyr::rename(personId = subjectId,
+                    startDate = cohortStartDate,
+                    endDate = cohortEndDate) %>%
+      dplyr::mutate(
+        domain = "Cohort",
+        cdmTable = "Cohort",
+        conceptName = "Cohort entry",
+        typeConceptName = "Cohort entry",
+        conceptId = 0,
+        typeConceptId = 0
       ) %>% 
-        dplyr::tibble()
-      colnames(events)[colnames(events) == "domainName"] <- "domain"
-      return(events)
+      dplyr::select(startDate,
+                    endDate,
+                    domain,
+                    conceptName,
+                    typeConceptName,
+                    conceptId,
+                    typeConceptId,
+                    cdmTable)
+    
+    observationPeriodFiltered <- observationPeriod %>%
+      dplyr::filter(personId == subjectIds[subject$index]) %>%
+      dplyr::select(observationPeriodStartDate,
+                    observationPeriodEndDate,
+                    periodTypeConceptId) %>%
+      dplyr::rename(startDate = observationPeriodStartDate,
+                    endDate = observationPeriodEndDate,
+                    typeConceptId = periodTypeConceptId) %>%
+      dplyr::mutate(conceptId = 0,
+                    cdmTable = "Observation Period",
+                    domain = "Observation Period",
+                    conceptName = "Observation Period") %>%
+      dplyr::left_join(
+        conceptIds %>%
+          dplyr::rename("typeConceptName" = "conceptName") %>%
+          dplyr::select(-domainId),
+        by = c("typeConceptId" = "conceptId")
+      )
+    return(dplyr::bind_rows(cohortFiltered,
+                            observationPeriodFiltered) %>% 
+             dplyr::arrange(cdmTable, startDate))
+  })
+  
+  
+  queryResult <- reactive({
+    filteredConceptIds <- conceptIds
+    if (is.null(input$cdmTables)) {
+      return(cohortAndObservationPeriod())
+    } else {
+      if (input$filterRegex != "") {
+        filteredConceptIds <- filteredConceptIds %>% 
+          dplyr::filter(stringr::str_detect(string = tolower(conceptName), 
+                                            pattern = tolower(input$filterRegex)))
+      }
+      
+      selectedCdmTables <- gsub(pattern = " ", replacement = "_", x = tolower(input$cdmTables))
+      
+      data <- dplyr::tibble()
+      
+      for (i in (1:length(selectedCdmTables))) {
+        domainTableData <-
+          get(SqlRender::snakeCaseToCamelCase(selectedCdmTables[[i]])) %>%
+          dplyr::filter(personId == subjectIds[subject$index]) %>% 
+          dplyr::mutate(cdmTable = selectedCdmTables[[i]])
+        
+        data <- dplyr::bind_rows(
+          data,
+          domainTableData
+        )
+      }
+      
+      data <- data %>% 
+        dplyr::inner_join(filteredConceptIds,
+                         by = "conceptId")
+      
+      data <- data %>% 
+        dplyr::left_join(conceptIds %>% 
+                            dplyr::rename("typeConceptName" = "conceptName") %>% 
+                            dplyr::select(-domainId),
+                          by = c("typeConceptId" = "conceptId"))
+      
+      data <- data %>% 
+        dplyr::rename(domain = domainId) %>% 
+        dplyr::select(-personId)
+      
+      data <- dplyr::bind_rows(cohortAndObservationPeriod(),
+                               data)
+
+      return(data)
     }
   })
   
   filteredEvents <- reactive({
     events <- queryResult()
-    if (nrow(events) != 0 && input$filterRegex != "") {
-      events <-
-        events[grepl(input$filterRegex, events$conceptName, ignore.case = TRUE) |
-                 events$domain == "Visit" |
-                 events$domain == "Observation period",]
-    }
     if (nrow(events) != 0) {
       events <- events[order(events$conceptId),]
       getY <- function(subset) {
@@ -44,22 +106,29 @@ shinyServer(function(input, output, session) {
         subset$y <- match(subset$conceptId, uniqueConceptIds)
         return(subset)
       }
-      events <- lapply(split(events, events$domain), getY)
+      events <- lapply(split(events, events$cdmTable), getY)
       events <- do.call("rbind", events)
     }
     return(events)
   })
   
+  
   colorScale <- reactive({
-    domains <- c("Cohort", input$domains)
-    if (length(domains) == 1) {
-      colors <- c("Red")
+    
+    selectedCdmTables <- input$cdmTables
+    if (length(selectedCdmTables) > 0) {
+      selectedCdmTables <- gsub(pattern = " ", replacement = "_", x = tolower(selectedCdmTables))
+    }
+    
+    tables <- c("Cohort", "Observation Period", selectedCdmTables)
+    if (length(tables) == 2) {
+      colors <- c("Red", "Orange")
     } else {
       temp <-
-        RColorBrewer::brewer.pal(max(3, length(domains) - 1), "Set2")
-      colors <- c("Red", temp[1:(length(domains) - 1)])
+        RColorBrewer::brewer.pal(n = max(3, length(tables) - 2),name = "Set2")
+      colors <- c("Red", "Orange", temp[1:(length(tables) - 2)])
     }
-    names(colors) <- domains
+    names(colors) <- tables
     return(colors)
   })
   
@@ -80,11 +149,19 @@ shinyServer(function(input, output, session) {
   })
   
   output$age <- renderText({
-    return(cohort$age[cohort$subjectId ==  subjectIds[subject$index]][1])
+    selectedSubjectId <- subjectIds[subject$index][1]
+    age <- subjects %>% 
+      dplyr::filter(personId == selectedSubjectId) %>% 
+      dplyr::pull(age)
+    return(age)
   })
   
   output$gender <- renderText({
-    return(cohort$gender[cohort$subjectId ==  subjectIds[subject$index]][1])
+    selectedSubjectId <- subjectIds[subject$index][1]
+    gender <- subjects %>% 
+      dplyr::filter(personId == selectedSubjectId) %>% 
+      dplyr::pull(gender)
+    return(gender)
   })
   
   camelCaseToPretty <- function(string) {
@@ -98,19 +175,7 @@ shinyServer(function(input, output, session) {
     events$y <- NULL
     cohortsOfSubject <-
       which(cohort$subjectId == subjectIds[subject$index])
-    for (i in cohortsOfSubject) {
-      events <- rbind(
-        events,
-        data.frame(
-          domain = "Cohort",
-          conceptId = cohortDefinitionId,
-          conceptName = "Cohort entry",
-          typeConceptName = "",
-          startDate = cohort$cohortStartDate[i],
-          endDate = cohort$cohortEndDate[i]
-        )
-      )
-    }
+    
     events <- events[order(events$startDate),]
     
     truncScript <- "function(data, type, row, meta) {\n
@@ -155,29 +220,32 @@ shinyServer(function(input, output, session) {
   
   output$plotSmall <- renderPlotly(plot())
   output$plotBig <- renderPlotly(plot())
-  
+
   plot <- reactive({
     events <- filteredEvents()
     if (nrow(events) == 0) {
       return(NULL)
     } else {
       colors <- colorScale()
-      domains <- aggregate(y ~ domain, events, max)
-      domains <- domains[order(domains$domain),]
-      domains$offset <- cumsum(domains$y) - domains$y
-      events <- merge(events, domains[, c("domain", "offset")])
+      cdmTables <- aggregate(x = y ~ cdmTable, data = events, FUN = max)
+      cdmTables <- cdmTables[order(cdmTables$cdmTable),]
+      cdmTables$offset <- cumsum(cdmTables$y) - cdmTables$y
+      events <- merge(events, cdmTables[, c("cdmTable", "offset")])
       events$y <- events$y + events$offset
       yRange <- c(min(events$y) - 1, max(events$y) + 1)
       events$text <-
         sprintf(
-          "%s - %s<br>%s<br>%s",
+          "%s - %s<br>%s<br>%s<br>%s<br>%s<br>%s",
           events$startDate,
           events$endDate,
           events$conceptName,
+          events$conceptId,
+          events$domain,
+          events$cdmTable,
           events$typeConceptName
         )
-      eventsPerY <- aggregate(domain ~ y, data = events, length)
-      yGrid <- eventsPerY$y[eventsPerY$domain > 1]
+      eventsPerY <- aggregate(cdmTable ~ y, data = events, length)
+      yGrid <- eventsPerY$y[eventsPerY$cdmTable > 1]
       
       yAxis <- list(
         title = "",
@@ -202,7 +270,7 @@ shinyServer(function(input, output, session) {
           data = events,
           x = ~ startDate,
           y = ~ y,
-          color = ~ domain,
+          color = ~ cdmTable,
           colors = colors,
           type = 'scatter',
           mode = 'markers',
@@ -215,7 +283,7 @@ shinyServer(function(input, output, session) {
           y = ~ y,
           xend = ~ endDate,
           yend = ~ y,
-          color = ~ domain,
+          color = ~ cdmTable,
           showlegend = FALSE,
           hoverinfo = "skip"
         )
@@ -246,6 +314,7 @@ shinyServer(function(input, output, session) {
           showlegend = first
         )
         first <- FALSE
+        
         if (!is.na(cohort$cohortEndDate[i])) {
           shapes[[length(shapes) + 1]] <- list(
             type = "rect",
@@ -261,6 +330,7 @@ shinyServer(function(input, output, session) {
           )
         }
       }
+      
       plot <- plot %>% layout(
         yaxis = yAxis,
         xaxis = xAxis,

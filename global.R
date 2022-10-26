@@ -4,30 +4,16 @@ library(DT)
 library(plotly)
 library(magrittr)
 
+source("configuration.R")
+
 cohortTable <- shinySettings$cohortTable
 cohortDatabaseSchema <- shinySettings$cohortDatabaseSchema
 cdmDatabaseSchema <- shinySettings$cdmDatabaseSchema
 cohortDefinitionId <- shinySettings$cohortDefinitionId
+vocabularyDatabaseSchema <- shinySettings$vocabularyDatabaseSchema
+tempEmulationSchema <- shinySettings$tempEmulationSchema
+sampleSize <- shinySettings$sampleSize
 
-if (!is.null(shinySettings$vocabularyDatabaseSchema)) {
-  vocabularyDatabaseSchema <- shinySettings$vocabularyDatabaseSchema
-} else {
-  vocabularyDatabaseSchema <- shinySettings$cdmDatabaseSchema
-}
-
-if (!is.null(shinySettings$tempEmulationSchema)) {
-  tempEmulationSchema <- shinySettings$tempEmulationSchema
-}
-
-if (!is.null(shinySettings$subjectIds)) {
-  subjectIds <- shinySettings$subjectIds
-} else {
-  subjectIds <- NULL
-}
-
-if (!is.null(shinySettings$sampleSize)) {
-  sampleSize <- shinySettings$sampleSize
-}
 
 connection <- DatabaseConnector::connect(connectionDetails)
 onStop(function() {
@@ -37,7 +23,7 @@ onStop(function() {
 })
 
 # take a random sample
-if (is.null(subjectIds)) {
+if (is.null(shinySettings$subjectIds)) {
   sql <- "SELECT TOP @sample_size subject_id
           FROM (
           	SELECT DISTINCT subject_id
@@ -45,36 +31,50 @@ if (is.null(subjectIds)) {
           	WHERE cohort_definition_id = @cohort_definition_id
           	) all_ids
           ORDER BY NEWID();"
-
+  
   writeLines("Attempting to find subjects in cohort table.")
-  subjectIds <- DatabaseConnector::renderTranslateQuerySql(connection = connection,
-                                                           sql = sql,
-                                                           sample_size = sampleSize,
-                                                           cohort_database_schema = cohortDatabaseSchema,
-                                                           cohort_table = cohortTable,
-                                                           cohort_definition_id = cohortDefinitionId)[, 1]
+  shinySettings$subjectIds <-
+    DatabaseConnector::renderTranslateQuerySql(
+      connection = connection,
+      sql = sql,
+      sample_size = sampleSize,
+      cohort_database_schema = cohortDatabaseSchema,
+      cohort_table = cohortTable,
+      cohort_definition_id = cohortDefinitionId
+    )[, 1]
 }
+
+subjectIds <- shinySettings$subjectIds
+
 
 if (length(subjectIds) == 0) {
   stop("No subjects found in cohort ",
        cohortDefinitionId)
 }
 
-sql <- SqlRender::readSql("sql/GetCohort.sql")
-cohort <- DatabaseConnector::renderTranslateQuerySql(connection = connection,
-                                                     sql = sql,
-                                                     cohort_database_schema = cohortDatabaseSchema,
-                                                     cohort_table = cohortTable,
-                                                     cdm_database_schema = cdmDatabaseSchema,
-                                                     cohort_definition_id = cohortDefinitionId,
-                                                     subject_ids = subjectIds,
-                                                     snakeCaseToCamelCase = TRUE) %>%
-  dplyr::tibble() %>%
-  dplyr::arrange(.data$subjectId, .data$cohortStartDate)
-subjectIds <- unique(cohort$subjectId)
 
-if (nrow(cohort) == 0) {
-  stop("Cohort is empty")
-}
+source("extractPersonLevelData.R")
 
-eventSql <- SqlRender::readSql("sql/GetEvents.sql")
+subjects <- cohort %>% 
+  dplyr::rename(personId = subjectId) %>% 
+  dplyr::group_by(personId) %>% 
+  dplyr::summarise(cohortStartDate = min(cohortStartDate)) %>% 
+  dplyr::inner_join(person, 
+                    by = "personId") %>% 
+  dplyr::mutate(age = clock::get_year(cohortStartDate) - yearOfBirth) %>% 
+  dplyr::inner_join(conceptIds,
+                    by = c("genderConceptId" = "conceptId")) %>% 
+  dplyr::rename(gender = conceptName) %>% 
+  dplyr::ungroup()
+
+
+tables <- c(
+  "conditionEra",
+  "conditionOccurrence",
+  "drugEra",
+  "drugExposure",
+  "procedureOccurrence",
+  "measurement",
+  "observation",
+  "visitOccurrence"
+)

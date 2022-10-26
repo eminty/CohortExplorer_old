@@ -18,19 +18,10 @@ fluidRow(
     actionButton("previousButton", "<"),
     actionButton("nextButton", ">"),
     checkboxGroupInput(
-      "domains",
-      label = "Domains",
-      choices = c(
-        "Condition era",
-        "Condition occurrence",
-        "Drug era",
-        "Drug exposure",
-        "Procedure",
-        "Measurement",
-        "Observation",
-        "Visit",
-        "Observation period"
-      )
+      "cdmTables",
+      label = "CDM Table",
+      choices = SqlRender::camelCaseToTitleCase(tables),
+      selected = SqlRender::camelCaseToTitleCase(c("visitOccurrence", "conditionOccurrence", "drugEra"))
     ),
     textAreaInput(
       "filterRegex",
