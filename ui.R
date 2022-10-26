@@ -21,12 +21,20 @@ fluidRow(
       "cdmTables",
       label = "CDM Table",
       choices = SqlRender::camelCaseToTitleCase(tables),
-      selected = SqlRender::camelCaseToTitleCase(c("visitOccurrence", "conditionOccurrence", "drugEra"))
+      selected = SqlRender::camelCaseToTitleCase(c(
+        "visitOccurrence", "conditionOccurrence", "drugEra"
+      ))
     ),
     textAreaInput(
       "filterRegex",
       div("Concept Name Filter", actionLink("filterInfo", "", icon = icon("info-circle"))),
       placeholder = "regex"
+    ),
+    dateRangeInput(
+      inputId = "dateRangeFilter",
+      label = "Filter date range",
+      start = "1980-01-01",
+      end = "2025-12-31"
     ),
     checkboxInput("showPlot", "Show Plot", value = TRUE),
     checkboxInput("showTable", "Show Table", value = TRUE),
@@ -37,9 +45,10 @@ fluidRow(
       condition = "input.showTable==1",
       conditionalPanel(condition = "input.showPlot==1",
                        plotlyOutput("plotSmall", height = "400px")),
-      dataTableOutput("eventTable")
+      shinycssloaders::withSpinner(reactable::reactableOutput(outputId = "eventTable")),
+      csvDownloadButton(ns = "eventTable", "eventTable")
     ),
     conditionalPanel(condition = "input.showTable==0 & input.showPlot==1",
-                     plotlyOutput("plotBig", height = "800px"),)
+                     plotlyOutput("plotBig", height = "800px"), )
   )
 )))

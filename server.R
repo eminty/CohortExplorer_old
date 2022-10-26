@@ -1,5 +1,4 @@
 shinyServer(function(input, output, session) {
-  
   subject <- reactiveValues(index = 1)
   
   cohortAndObservationPeriod <- reactive({
@@ -15,15 +14,18 @@ shinyServer(function(input, output, session) {
         typeConceptName = "Cohort entry",
         conceptId = 0,
         typeConceptId = 0
-      ) %>% 
-      dplyr::select(startDate,
-                    endDate,
-                    domain,
-                    conceptName,
-                    typeConceptName,
-                    conceptId,
-                    typeConceptId,
-                    cdmTable)
+      ) %>%
+      dplyr::select(
+        startDate,
+        endDate,
+        domain,
+        conceptName,
+        typeConceptName,
+        conceptId,
+        typeConceptId,
+        cdmTable
+      )
+    
     
     observationPeriodFiltered <- observationPeriod %>%
       dplyr::filter(personId == subjectIds[subject$index]) %>%
@@ -33,19 +35,26 @@ shinyServer(function(input, output, session) {
       dplyr::rename(startDate = observationPeriodStartDate,
                     endDate = observationPeriodEndDate,
                     typeConceptId = periodTypeConceptId) %>%
-      dplyr::mutate(conceptId = 0,
-                    cdmTable = "Observation Period",
-                    domain = "Observation Period",
-                    conceptName = "Observation Period") %>%
+      dplyr::mutate(
+        conceptId = 0,
+        cdmTable = "Observation Period",
+        domain = "Observation Period",
+        conceptName = "Observation Period"
+      ) %>%
       dplyr::left_join(
         conceptIds %>%
           dplyr::rename("typeConceptName" = "conceptName") %>%
           dplyr::select(-domainId),
         by = c("typeConceptId" = "conceptId")
       )
-    return(dplyr::bind_rows(cohortFiltered,
-                            observationPeriodFiltered) %>% 
-             dplyr::arrange(cdmTable, startDate))
+    
+    data <- dplyr::bind_rows(cohortFiltered,
+                             observationPeriodFiltered) %>%
+      dplyr::arrange(cdmTable, startDate)
+    
+    data$firstOccurrenceDate <- min(cohortFiltered$startDate)
+    
+    return(data)
   })
   
   
@@ -55,44 +64,61 @@ shinyServer(function(input, output, session) {
       return(cohortAndObservationPeriod())
     } else {
       if (input$filterRegex != "") {
-        filteredConceptIds <- filteredConceptIds %>% 
-          dplyr::filter(stringr::str_detect(string = tolower(conceptName), 
-                                            pattern = tolower(input$filterRegex)))
+        filteredConceptIds <- filteredConceptIds %>%
+          dplyr::filter(stringr::str_detect(
+            string = tolower(conceptName),
+            pattern = tolower(input$filterRegex)
+          ))
       }
       
-      selectedCdmTables <- gsub(pattern = " ", replacement = "_", x = tolower(input$cdmTables))
+      selectedCdmTables <-
+        gsub(
+          pattern = " ",
+          replacement = "_",
+          x = tolower(input$cdmTables)
+        )
       
       data <- dplyr::tibble()
       
       for (i in (1:length(selectedCdmTables))) {
         domainTableData <-
           get(SqlRender::snakeCaseToCamelCase(selectedCdmTables[[i]])) %>%
-          dplyr::filter(personId == subjectIds[subject$index]) %>% 
+          dplyr::filter(personId == subjectIds[subject$index]) %>%
           dplyr::mutate(cdmTable = selectedCdmTables[[i]])
         
-        data <- dplyr::bind_rows(
-          data,
-          domainTableData
-        )
+        data <- dplyr::bind_rows(data,
+                                 domainTableData)
       }
       
-      data <- data %>% 
+      data <- data %>%
         dplyr::inner_join(filteredConceptIds,
-                         by = "conceptId")
+                          by = "conceptId")
       
-      data <- data %>% 
-        dplyr::left_join(conceptIds %>% 
-                            dplyr::rename("typeConceptName" = "conceptName") %>% 
-                            dplyr::select(-domainId),
-                          by = c("typeConceptId" = "conceptId"))
+      data <- data %>%
+        dplyr::left_join(
+          conceptIds %>%
+            dplyr::rename("typeConceptName" = "conceptName") %>%
+            dplyr::select(-domainId),
+          by = c("typeConceptId" = "conceptId")
+        )
       
-      data <- data %>% 
-        dplyr::rename(domain = domainId) %>% 
+      data <- data %>%
+        dplyr::rename(domain = domainId) %>%
         dplyr::select(-personId)
       
+      firstOccurrenceDateValue <-
+        cohortAndObservationPeriod()$firstOccurrenceDate %>% unique()
       data <- dplyr::bind_rows(cohortAndObservationPeriod(),
-                               data)
-
+                               data) %>%
+        dplyr::select(-firstOccurrenceDate) %>%
+        dplyr::mutate(daysFromFirstOccurrenceDate = startDate - firstOccurrenceDateValue)
+      
+      if (!is.null(input$dateRangeFilter)) {
+        data <- data %>%
+          dplyr::filter(startDate >= as.Date(input$dateRangeFilter[[1]])) %>%
+          dplyr::filter(endDate <= as.Date(input$dateRangeFilter[[2]]))
+      }
+      
       return(data)
     }
   })
@@ -100,7 +126,7 @@ shinyServer(function(input, output, session) {
   filteredEvents <- reactive({
     events <- queryResult()
     if (nrow(events) != 0) {
-      events <- events[order(events$conceptId),]
+      events <- events[order(events$conceptId), ]
       getY <- function(subset) {
         uniqueConceptIds <- unique(subset$conceptId)
         subset$y <- match(subset$conceptId, uniqueConceptIds)
@@ -114,10 +140,14 @@ shinyServer(function(input, output, session) {
   
   
   colorScale <- reactive({
-    
     selectedCdmTables <- input$cdmTables
     if (length(selectedCdmTables) > 0) {
-      selectedCdmTables <- gsub(pattern = " ", replacement = "_", x = tolower(selectedCdmTables))
+      selectedCdmTables <-
+        gsub(
+          pattern = " ",
+          replacement = "_",
+          x = tolower(selectedCdmTables)
+        )
     }
     
     tables <- c("Cohort", "Observation Period", selectedCdmTables)
@@ -125,7 +155,7 @@ shinyServer(function(input, output, session) {
       colors <- c("Red", "Orange")
     } else {
       temp <-
-        RColorBrewer::brewer.pal(n = max(3, length(tables) - 2),name = "Set2")
+        RColorBrewer::brewer.pal(n = max(3, length(tables) - 2), name = "Set2")
       colors <- c("Red", "Orange", temp[1:(length(tables) - 2)])
     }
     names(colors) <- tables
@@ -150,85 +180,69 @@ shinyServer(function(input, output, session) {
   
   output$age <- renderText({
     selectedSubjectId <- subjectIds[subject$index][1]
-    age <- subjects %>% 
-      dplyr::filter(personId == selectedSubjectId) %>% 
+    age <- subjects %>%
+      dplyr::filter(personId == selectedSubjectId) %>%
       dplyr::pull(age)
     return(age)
   })
   
   output$gender <- renderText({
     selectedSubjectId <- subjectIds[subject$index][1]
-    gender <- subjects %>% 
-      dplyr::filter(personId == selectedSubjectId) %>% 
+    gender <- subjects %>%
+      dplyr::filter(personId == selectedSubjectId) %>%
       dplyr::pull(gender)
     return(gender)
   })
   
-  camelCaseToPretty <- function(string) {
-    string <- gsub("([A-Z])", " \\1", string)
-    substr(string, 1, 1) <- toupper(substr(string, 1, 1))
-    return(string)
-  }
-  
-  output$eventTable <- renderDataTable({
-    events <- filteredEvents()
-    events$y <- NULL
-    cohortsOfSubject <-
-      which(cohort$subjectId == subjectIds[subject$index])
+  output$eventTable <- reactable::renderReactable(expr = {
+    data <- filteredEvents() %>%
+      dplyr::relocate(daysFromFirstOccurrenceDate) %>%
+      dplyr::arrange(abs(daysFromFirstOccurrenceDate))
     
-    events <- events[order(events$startDate),]
+    data$y <- NULL
     
-    truncScript <- "function(data, type, row, meta) {\n
-      return type === 'display' && data != null && data.length > %s ?\n
-        '<span title=\"' + data + '\">' + data.substr(0, %s) + '...</span>' : data;\n
-     }"
-    options = list(
-      pageLength = 10000,
-      searching = FALSE,
-      lengthChange = FALSE,
-      ordering = FALSE,
-      paging = FALSE,
-      scrollY = '75vh',
-      columnDefs = list(list(
-        targets = 2,
-        render = JS(sprintf(truncScript, 90, 90))
-      ),
-      list(
-        targets = 3,
-        render = JS(sprintf(truncScript, 40, 40))
-      ))
-    )
+    colnames(data) <-
+      SqlRender::camelCaseToTitleCase(colnames(data))
     
-    selection = list(mode = "single", target = "row")
-    table <- datatable(
-      events,
-      options = options,
-      selection = selection,
-      rownames = FALSE,
-      colnames = camelCaseToPretty(colnames(events)),
-      class = "stripe nowrap compact"
+    dataTable <- reactable::reactable(
+      data = data,
+      sortable = TRUE,
+      resizable = TRUE,
+      filterable = TRUE,
+      searchable = TRUE,
+      pagination = TRUE,
+      showPagination = TRUE,
+      showPageInfo = TRUE,
+      highlight = TRUE,
+      striped = TRUE,
+      compact = TRUE,
+      showSortIcon = TRUE,
+      showSortable = TRUE,
+      fullWidth = TRUE,
+      borderless = TRUE,
+      onClick = "select",
+      wrap = TRUE,
+      showPageSizeOptions = TRUE,
+      pageSizeOptions = c(10, 20, 50, 100, 1000),
+      defaultPageSize = 1000
     )
-    colors <- colorScale()
-    table <- formatStyle(
-      table = table,
-      columns = 1,
-      target = "cell",
-      backgroundColor = styleEqual(names(colors), colors)
-    )
-    return(table)
+    return(dataTable)
   })
   
   output$plotSmall <- renderPlotly(plot())
   output$plotBig <- renderPlotly(plot())
-
+  
   plot <- reactive({
     events <- filteredEvents()
     if (nrow(events) == 0) {
       return(NULL)
     } else {
       colors <- colorScale()
-      cdmTables <- aggregate(x = y ~ cdmTable, data = events, FUN = max)
-      cdmTables <- cdmTables[order(cdmTables$cdmTable),]
+      cdmTables <-
+        aggregate(x = y ~ cdmTable,
+                  data = events,
+                  FUN = max)
+      cdmTables <- cdmTables[order(cdmTables$cdmTable), ]
       cdmTables$offset <- cumsum(cdmTables$y) - cdmTables$y
       events <- merge(events, cdmTables[, c("cdmTable", "offset")])
       events$y <- events$y + events$offset
@@ -344,7 +358,7 @@ shinyServer(function(input, output, session) {
           pad = 1
         )
       )
-      plot
+      return(plot)
     }
   })
   

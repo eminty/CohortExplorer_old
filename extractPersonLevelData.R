@@ -1,4 +1,5 @@
 
+
 writeLines("Getting cohort table.")
 cohort <-
   DatabaseConnector::renderTranslateQuerySql(
@@ -123,7 +124,7 @@ conditionEra <-  DatabaseConnector::renderTranslateQuerySql(
   subject_ids = shinySettings$subjectIds,
   snakeCaseToCamelCase = TRUE
 ) %>%
-  dplyr::tibble() %>% 
+  dplyr::tibble() %>%
   dplyr::mutate(typeConceptId = 0, records = 1)
 
 writeLines("Getting observation table.")
@@ -172,7 +173,7 @@ procedureOccurrence <-  DatabaseConnector::renderTranslateQuerySql(
   subject_ids = shinySettings$subjectIds,
   snakeCaseToCamelCase = TRUE
 ) %>%
-  dplyr::tibble() %>% 
+  dplyr::tibble() %>%
   dplyr::mutate(endDate = startDate)
 
 writeLines("Getting drug exposure table.")
@@ -224,7 +225,7 @@ drugEra <-  DatabaseConnector::renderTranslateQuerySql(
   subject_ids = shinySettings$subjectIds,
   snakeCaseToCamelCase = TRUE
 ) %>%
-  dplyr::tibble() %>% 
+  dplyr::tibble() %>%
   dplyr::mutate(typeConceptId = 0)
 
 writeLines("Getting measurement table.")
@@ -249,7 +250,7 @@ measurement <-  DatabaseConnector::renderTranslateQuerySql(
   subject_ids = shinySettings$subjectIds,
   snakeCaseToCamelCase = TRUE
 ) %>%
-  dplyr::tibble() %>% 
+  dplyr::tibble() %>%
   dplyr::mutate(endDate = startDate)
 
 
@@ -362,7 +363,7 @@ conceptIds <- DatabaseConnector::renderTranslateQuerySql(
         ORDER BY c.concept_id;",
   cdm_database_schema = shinySettings$cdmDatabaseSchema,
   vocabulary_database_schema = shinySettings$vocabularyDatabaseSchema,
-  subject_ids = shinySettings$subjectIds, 
+  subject_ids = shinySettings$subjectIds,
   snakeCaseToCamelCase = TRUE
 ) %>%
   dplyr::tibble()

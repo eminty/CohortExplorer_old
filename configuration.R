@@ -15,7 +15,7 @@ connectionDetails <- DatabaseConnector::createConnectionDetails(
 shinySettings <- c()
 
 shinySettings$cohortDefinitionId <- "9537"
-shinySettings$sampleSize <- 1
+shinySettings$sampleSize <- 100
 
 shinySettings$cohortTable <- "cohort"
 shinySettings$cohortDatabaseSchema <-
@@ -35,5 +35,3 @@ if (is.null(shinySettings$tempEmulationSchema)) {
 if (is.null(shinySettings$subjectIds)) {
   shinySettings$subjectIds <- NULL
 }
-
-
