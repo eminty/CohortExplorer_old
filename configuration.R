@@ -17,6 +17,8 @@ shinySettings <- c()
 shinySettings$cohortDefinitionId <- "9537"
 shinySettings$sampleSize <- 100
 
+shinySettings$originDate <- as.Date('2020-01-01')
+
 shinySettings$cohortTable <- "cohort"
 shinySettings$cohortDatabaseSchema <-
   cdmSource$resultsDatabaseSchema

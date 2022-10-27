@@ -13,7 +13,7 @@ cohortDefinitionId <- shinySettings$cohortDefinitionId
 vocabularyDatabaseSchema <- shinySettings$vocabularyDatabaseSchema
 tempEmulationSchema <- shinySettings$tempEmulationSchema
 sampleSize <- shinySettings$sampleSize
-
+originDate <- shinySettings$originDate
 
 connection <- DatabaseConnector::connect(connectionDetails)
 onStop(function() {

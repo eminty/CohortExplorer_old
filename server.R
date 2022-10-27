@@ -2,6 +2,7 @@ shinyServer(function(input, output, session) {
   subject <- reactiveValues(index = 1)
   
   cohortAndObservationPeriod <- reactive({
+    
     cohortFiltered <- cohort %>%
       dplyr::filter(subjectId == subjectIds[subject$index]) %>%
       dplyr::rename(personId = subjectId,
@@ -11,9 +12,7 @@ shinyServer(function(input, output, session) {
         domain = "Cohort",
         cdmTable = "Cohort",
         conceptName = "Cohort entry",
-        typeConceptName = "Cohort entry",
-        conceptId = 0,
-        typeConceptId = 0
+        typeConceptName = "Cohort entry"
       ) %>%
       dplyr::select(
         startDate,
@@ -21,8 +20,6 @@ shinyServer(function(input, output, session) {
         domain,
         conceptName,
         typeConceptName,
-        conceptId,
-        typeConceptId,
         cdmTable
       )
     
@@ -36,7 +33,6 @@ shinyServer(function(input, output, session) {
                     endDate = observationPeriodEndDate,
                     typeConceptId = periodTypeConceptId) %>%
       dplyr::mutate(
-        conceptId = 0,
         cdmTable = "Observation Period",
         domain = "Observation Period",
         conceptName = "Observation Period"
@@ -90,28 +86,63 @@ shinyServer(function(input, output, session) {
                                  domainTableData)
       }
       
+      if (input$showSourceCode) {
+        data <- data %>%
+          dplyr::mutate(conceptId = sourceConceptId) %>%
+          dplyr::select(-sourceConceptId) %>%
+          dplyr::group_by(personId,
+                          startDate,
+                          endDate,
+                          conceptId,
+                          typeConceptId,
+                          cdmTable) %>%
+          dplyr::summarise(records = sum(records),
+                           .groups = "keep") %>%
+          dplyr::ungroup()
+      } else {
+        data <- data %>%
+          dplyr::select(-sourceConceptId) %>%
+          dplyr::group_by(personId,
+                          startDate,
+                          endDate,
+                          conceptId,
+                          typeConceptId,
+                          cdmTable) %>%
+          dplyr::summarise(records = sum(records),
+                           .groups = "keep") %>%
+          dplyr::ungroup()
+      }
+      
       data <- data %>%
         dplyr::inner_join(filteredConceptIds,
                           by = "conceptId")
+      
+      if (isFALSE(input$showSourceCode)) {
+        data <- data %>% 
+          dplyr::select(-conceptCode, -vocabularyId)
+      }
       
       data <- data %>%
         dplyr::left_join(
           conceptIds %>%
             dplyr::rename("typeConceptName" = "conceptName") %>%
-            dplyr::select(-domainId),
+            dplyr::select(-domainId, -vocabularyId, -conceptCode),
           by = c("typeConceptId" = "conceptId")
-        )
+        ) %>% 
+        dplyr::select(-typeConceptId)
       
       data <- data %>%
         dplyr::rename(domain = domainId) %>%
         dplyr::select(-personId)
-      
       firstOccurrenceDateValue <-
         cohortAndObservationPeriod()$firstOccurrenceDate %>% unique()
-      data <- dplyr::bind_rows(cohortAndObservationPeriod(),
+      
+      cohortData <- cohortAndObservationPeriod() %>% dplyr::select(intersect(colnames(data),
+                                                                             colnames(cohortAndObservationPeriod())))
+      
+      data <- dplyr::bind_rows(cohortData,
                                data) %>%
-        dplyr::select(-firstOccurrenceDate) %>%
-        dplyr::mutate(daysFromFirstOccurrenceDate = startDate - firstOccurrenceDateValue)
+        dplyr::mutate(daysToFirst = firstOccurrenceDateValue - startDate)
       
       if (!is.null(input$dateRangeFilter)) {
         data <- data %>%
@@ -119,6 +150,22 @@ shinyServer(function(input, output, session) {
           dplyr::filter(endDate <= as.Date(input$dateRangeFilter[[2]]))
       }
       
+      if (isTRUE(input$shiftDates)) {
+        earliestDate <- cohortAndObservationPeriod() %>% 
+          dplyr::select(startDate) %>% 
+          dplyr::summarise(startDate = as.Date(min(startDate))) %>% 
+          dplyr::pull(startDate)
+        
+        data <- data %>%
+          dplyr::mutate(startDate = clock::add_days(x = as.Date(originDate), 
+                                                    n = as.integer(difftime(time1 = startDate, 
+                                                                            time2 = earliestDate, 
+                                                                            units = "days")))) %>%
+          dplyr::mutate(endDate = clock::add_days(x = as.Date(originDate), 
+                                                    n = as.integer(difftime(time1 = endDate, 
+                                                                            time2 = earliestDate, 
+                                                                            units = "days"))))
+      }
       return(data)
     }
   })
@@ -196,10 +243,15 @@ shinyServer(function(input, output, session) {
   
   output$eventTable <- reactable::renderReactable(expr = {
     data <- filteredEvents() %>%
-      dplyr::relocate(daysFromFirstOccurrenceDate) %>%
-      dplyr::arrange(abs(daysFromFirstOccurrenceDate))
-    
-    data$y <- NULL
+      dplyr::arrange(abs(daysToFirst)) %>% 
+      dplyr::select(-conceptId, -y) %>%
+      dplyr::relocate(daysToFirst,
+                      conceptName,
+                      typeConceptName,
+                      startDate,
+                      endDate,
+                      domain,
+                      cdmTable)
     
     colnames(data) <-
       SqlRender::camelCaseToTitleCase(colnames(data))
@@ -303,17 +355,23 @@ shinyServer(function(input, output, session) {
         )
       
       shapes <- list()
-      cohortsOfSubject <-
-        which(cohort$subjectId == subjectIds[subject$index])
+      
+      cohortData <- events %>% 
+        dplyr::filter(cdmTable == "Cohort") %>% 
+        dplyr::select(startDate, 
+                      endDate) %>% 
+        dplyr::distinct() %>% 
+        dplyr::arrange(startDate)
+      
       first <- TRUE
-      for (i in cohortsOfSubject) {
+      for (i in (1:nrow(cohortData))) {
         data <- data.frame(
-          date = rep(cohort$cohortStartDate[i], 2),
+          date = rep(cohortData$startDate[i], 2),
           y = rep(yRange, 2),
           text = sprintf(
             "%s - %s",
-            cohort$cohortStartDate[i],
-            cohort$cohortEndDate[i]
+            cohortData$startDate[i],
+            cohortData$endDate[i]
           )
         )
         plot <- plot %>% add_lines(
@@ -329,14 +387,14 @@ shinyServer(function(input, output, session) {
         )
         first <- FALSE
         
-        if (!is.na(cohort$cohortEndDate[i])) {
+        if (!is.na(cohortData$endDate[i])) {
           shapes[[length(shapes) + 1]] <- list(
             type = "rect",
             fillcolor = "red",
             line = list(color = colors["Cohort"]),
             opacity = 0.3,
-            x0 = cohort$cohortStartDate[i],
-            x1 = cohort$cohortEndDate[i],
+            x0 = cohortData$startDate[i],
+            x1 = cohortData$endDate[i],
             xref = "startDate",
             y0 = yRange[1],
             y1 = yRange[2],

@@ -38,6 +38,8 @@ fluidRow(
     ),
     checkboxInput("showPlot", "Show Plot", value = TRUE),
     checkboxInput("showTable", "Show Table", value = TRUE),
+    checkboxInput("shiftDates", "Shift Dates", value = FALSE),
+    checkboxInput("showSourceCode", "Show source code", value = FALSE),
   ),
   column(
     10,
