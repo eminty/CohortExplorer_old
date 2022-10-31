@@ -33,9 +33,19 @@ fluidRow(
     dateRangeInput(
       inputId = "dateRangeFilter",
       label = "Filter date range",
-      start = "1980-01-01",
-      end = "2025-12-31"
+      start = "1900-01-01",
+      end = "2099-12-31"
     ),
+    numericInput(inputId = "daysFromCohortStart", 
+                 label = "Absolute days from Start", 
+                 min = 0, max = 9999, 
+                 step = 1, 
+                 value = 9999),
+    shinyWidgets::pickerInput(inputId = "highlightConceptSet", 
+                label = "Concept set", 
+                choices = conceptSets$id$fullName,
+                selected = NULL, 
+                multiple = TRUE),
     checkboxInput("showPlot", "Show Plot", value = TRUE),
     checkboxInput("showTable", "Show Table", value = TRUE),
     checkboxInput("shiftDates", "Shift Dates", value = FALSE),

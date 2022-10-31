@@ -24,6 +24,8 @@ shinySettings$cohortDatabaseSchema <-
   cdmSource$resultsDatabaseSchema
 shinySettings$cdmDatabaseSchema <- cdmSource$cdmDatabaseSchema
 
+shinySettings$conceptSetIds <- c()
+
 
 if (is.null(shinySettings$vocabularyDatabaseSchema)) {
   shinySettings$vocabularyDatabaseSchema <-
@@ -36,4 +38,34 @@ if (is.null(shinySettings$tempEmulationSchema)) {
 
 if (is.null(shinySettings$subjectIds)) {
   shinySettings$subjectIds <- NULL
+}
+
+shinySettings$conceptSets <- c()
+
+if (length(shinySettings$conceptSetIds) > 0) {
+  baseUrl <- Sys.getenv("BaseUrl")
+  for (i in (1:length(shinySettings$conceptSetIds))) {
+    ROhdsiWebApi::authorizeWebApi(baseUrl = baseUrl, authMethod = "windows")
+    conceptSetExpression <-
+      ROhdsiWebApi::getConceptSetDefinition(conceptSetId = shinySettings$conceptSetIds[[i]], baseUrl = baseUrl)
+    conceptSetResolved <- ROhdsiWebApi::resolveConceptSet(conceptSetDefinition = conceptSetExpression, baseUrl = baseUrl)
+    
+    shinySettings$conceptSets$id <- dplyr::bind_rows(
+      dplyr::tibble(
+        conceptSetId = shinySettings$conceptSetIds[[i]],
+        conceptSetName = conceptSetExpression$name
+      ) %>% 
+        dplyr::mutate(fullName = paste0(conceptSetId, " ", conceptSetName)),
+      shinySettings$conceptSets$expression
+    ) %>% 
+      dplyr::arrange(conceptSetId)
+    
+    shinySettings$conceptSets$resolved <- dplyr::bind_rows(
+      dplyr::tibble(
+        conceptSetId = shinySettings$conceptSetIds[[i]],
+        conceptId = conceptSetResolved
+      ),
+      shinySettings$conceptSets$resolved
+    )
+  }
 }

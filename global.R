@@ -14,6 +14,9 @@ vocabularyDatabaseSchema <- shinySettings$vocabularyDatabaseSchema
 tempEmulationSchema <- shinySettings$tempEmulationSchema
 sampleSize <- shinySettings$sampleSize
 originDate <- shinySettings$originDate
+conceptSetIds <- shinySettings$conceptSetIds
+conceptSets <- shinySettings$conceptSets
+
 
 connection <- DatabaseConnector::connect(connectionDetails)
 onStop(function() {
@@ -88,3 +91,6 @@ csvDownloadButton <- function(ns,
                    onclick = paste0("Reactable.downloadDataCSV('", outputTableId, "')")
                  ))
 }
+
+
+DatabaseConnector::disconnect(connection = connection)

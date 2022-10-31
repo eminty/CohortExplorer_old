@@ -66,6 +66,19 @@ shinyServer(function(input, output, session) {
             pattern = tolower(input$filterRegex)
           ))
       }
+      if (!is.null(input$highlightConceptSet)) {
+        selectedConceptSetId <- shinySettings$conceptSets$id %>% 
+          dplyr::filter(fullName %in% c(input$highlightConceptSet)) %>% 
+          dplyr::pull(conceptSetId)
+        
+        filteredConceptIds <- filteredConceptIds %>%
+          dplyr::filter(
+            conceptId %in% c(shinySettings$conceptSets$resolved %>%
+              dplyr::filter(conceptSetId %in% selectedConceptSetId) %>%
+              dplyr::pull(conceptId) %>%
+              unique())
+          )
+      }
       
       selectedCdmTables <-
         gsub(
@@ -82,8 +95,12 @@ shinyServer(function(input, output, session) {
           dplyr::filter(personId == subjectIds[subject$index]) %>%
           dplyr::mutate(cdmTable = selectedCdmTables[[i]])
         
+        domainTableData <- domainTableData %>%
+          dplyr::mutate(endDate = dplyr::if_else(condition = is.na(endDate), true = startDate, false = endDate))
+        
         data <- dplyr::bind_rows(data,
                                  domainTableData)
+        
       }
       
       if (input$showSourceCode) {
@@ -148,6 +165,11 @@ shinyServer(function(input, output, session) {
         data <- data %>%
           dplyr::filter(startDate >= as.Date(input$dateRangeFilter[[1]])) %>%
           dplyr::filter(endDate <= as.Date(input$dateRangeFilter[[2]]))
+      }
+      
+      if (!is.null(input$daysFromCohortStart)) {
+        data <- data %>% 
+          dplyr::filter(abs(as.integer(daysToFirst)) <= input$daysFromCohortStart)
       }
       
       if (isTRUE(input$shiftDates)) {
