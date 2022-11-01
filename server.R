@@ -95,6 +95,11 @@ shinyServer(function(input, output, session) {
           dplyr::filter(personId == subjectIds[subject$index]) %>%
           dplyr::mutate(cdmTable = selectedCdmTables[[i]])
         
+        if (!'endDate' %in% colnames(domainTableData)) {
+          domainTableData <- domainTableData %>% 
+            dplyr::mutate(endDate = startDate)
+        }
+        
         domainTableData <- domainTableData %>%
           dplyr::mutate(endDate = dplyr::if_else(condition = is.na(endDate), true = startDate, false = endDate))
         

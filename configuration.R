@@ -14,8 +14,8 @@ connectionDetails <- DatabaseConnector::createConnectionDetails(
 
 shinySettings <- c()
 
-shinySettings$cohortDefinitionId <- "9537"
-shinySettings$sampleSize <- 100
+shinySettings$cohortDefinitionId <- 8865
+shinySettings$sampleSize <- 20
 
 shinySettings$originDate <- as.Date('2020-01-01')
 
@@ -24,7 +24,7 @@ shinySettings$cohortDatabaseSchema <-
   cdmSource$resultsDatabaseSchema
 shinySettings$cdmDatabaseSchema <- cdmSource$cdmDatabaseSchema
 
-shinySettings$conceptSetIds <- c()
+shinySettings$conceptSetIds <- c(4252, 4249)# inpatient or ER visit
 
 
 if (is.null(shinySettings$vocabularyDatabaseSchema)) {
@@ -42,8 +42,9 @@ if (is.null(shinySettings$subjectIds)) {
 
 shinySettings$conceptSets <- c()
 
+baseUrl <- Sys.getenv("BaseUrl")
+
 if (length(shinySettings$conceptSetIds) > 0) {
-  baseUrl <- Sys.getenv("BaseUrl")
   for (i in (1:length(shinySettings$conceptSetIds))) {
     ROhdsiWebApi::authorizeWebApi(baseUrl = baseUrl, authMethod = "windows")
     conceptSetExpression <-
@@ -69,3 +70,16 @@ if (length(shinySettings$conceptSetIds) > 0) {
     )
   }
 }
+
+
+cohortName <- c()
+ROhdsiWebApi::authorizeWebApi(baseUrl = baseUrl, authMethod = "windows")
+
+shinySettings$cohortName <-
+  ROhdsiWebApi::getCohortDefinition(
+    cohortId = shinySettings$cohortDefinitionId %>% as.integer(),
+    baseUrl = baseUrl
+  )
+
+shinySettings$cohortName <- 
+  shinySettings$cohortName$name

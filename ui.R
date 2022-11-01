@@ -1,6 +1,7 @@
 shinyUI(fluidPage(titlePanel(
   sprintf(
-    "Exploring cohort %s in %s.%s",
+    "Exploring %s (%s) in %s.%s",
+    cohortName,
     cohortDefinitionId,
     cohortDatabaseSchema,
     cohortTable
@@ -22,7 +23,7 @@ fluidRow(
       label = "CDM Table",
       choices = SqlRender::camelCaseToTitleCase(tables),
       selected = SqlRender::camelCaseToTitleCase(c(
-        "visitOccurrence", "conditionOccurrence", "drugEra"
+        "visitOccurrence", "conditionOccurrence", "drugEra", "procedureOccurrence", "measurement", "observation"
       ))
     ),
     textAreaInput(
