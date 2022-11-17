@@ -16,7 +16,9 @@ sampleSize <- shinySettings$sampleSize
 originDate <- shinySettings$originDate
 conceptSetIds <- shinySettings$conceptSetIds
 conceptSets <- shinySettings$conceptSets
-cohortName <- shinySettings$cohortName
+#cohortName <- shinySettings$cohortName
+
+cohortName <- "test"
 
 connection <- DatabaseConnector::connect(connectionDetails)
 onStop(function() {

@@ -1,4 +1,19 @@
-databaseId <- 'optum_extended_dod'
+# # install.packages("tidyverse")
+library(tidyverse)
+library(dplyr)
+library(Hades)
+library(keyring)
+library(usethis)
+
+#usethis::edit_r_profile()
+
+#cdmSources$database
+
+
+
+databaseId <- "truven_mdcd"  
+
+baseUrl = Sys.getenv("baseUrl")
 
 cdmSource <- cdmSources %>%
   dplyr::filter(database == databaseId) %>%
@@ -9,22 +24,25 @@ connectionDetails <- DatabaseConnector::createConnectionDetails(
   user = keyring::key_get("OHDSI_USER"),
   password = keyring::key_get("OHDSI_PASSWORD"),
   server = cdmSource$server,
-  port = cdmSource$port
+  port = cdmSource$port,
+  pathToDriver = pathToDriver
 )
+
+#source("connectionDetails.R")
+# connectionDetails = connectionDetailsMDCD
 
 shinySettings <- c()
 
-shinySettings$cohortDefinitionId <- 8865
+shinySettings$cohortDefinitionId <- 10212
 shinySettings$sampleSize <- 20
 
 shinySettings$originDate <- as.Date('2020-01-01')
 
 shinySettings$cohortTable <- "cohort"
-shinySettings$cohortDatabaseSchema <-
-  cdmSource$resultsDatabaseSchema
-shinySettings$cdmDatabaseSchema <- cdmSource$cdmDatabaseSchema
+shinySettings$cohortDatabaseSchema <-"results_truven_mdcd_v2128"
+shinySettings$cdmDatabaseSchema <- "cdm_truven_mdcd_v2128"
 
-shinySettings$conceptSetIds <- c(4252, 4249)# inpatient or ER visit
+shinySettings$conceptSetIds <- c()# inpatient or ER visit
 
 
 if (is.null(shinySettings$vocabularyDatabaseSchema)) {
@@ -43,6 +61,9 @@ if (is.null(shinySettings$subjectIds)) {
 shinySettings$conceptSets <- c()
 
 baseUrl <- Sys.getenv("BaseUrl")
+# #temporary, while rprofile method being fixed:
+# baseUrl <- "https://epi.jnj.com:8443/WebAPI"
+
 
 if (length(shinySettings$conceptSetIds) > 0) {
   for (i in (1:length(shinySettings$conceptSetIds))) {
@@ -73,7 +94,12 @@ if (length(shinySettings$conceptSetIds) > 0) {
 
 
 cohortName <- c()
+
+
 ROhdsiWebApi::authorizeWebApi(baseUrl = baseUrl, authMethod = "windows")
+
+#check for webAPI
+#ROhdsiWebApi::getWebApiVersion(baseUrl = baseUrl)
 
 shinySettings$cohortName <-
   ROhdsiWebApi::getCohortDefinition(
@@ -81,5 +107,5 @@ shinySettings$cohortName <-
     baseUrl = baseUrl
   )
 
-shinySettings$cohortName <- 
+shinySettings$cohortName <-
   shinySettings$cohortName$name
